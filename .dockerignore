@@ -1,0 +1,14 @@
+# dependencies & build output
+node_modules
+dist
+
+# VCS
+.git
+.gitignore
+
+# env & secrets
+.env
+
+# tooling configs (dev-only)
+.prettierrc
+eslint.config.mjs
