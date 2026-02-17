@@ -2,6 +2,7 @@ import {
   Get,
   Post,
   Delete,
+  Put,
   Body,
   Param,
   Query,
@@ -54,6 +55,23 @@ export class EventsController {
     return this.eventsService.findOne(id);
   }
 
+  @UseGuards(AdminGuard)
+  @ApiOperation({ summary: 'Update an event (Admin only)' }) // swagger doc
+  @Put(':id')
+  async updateEvent(
+    @Param('id') id: number,
+    @Body() body: Partial<CreateEventDto>,
+  ) {
+    return this.eventsService.update(id, body);
+  }
+
+  @UseGuards(AdminGuard)
+  @ApiOperation({ summary: 'Delete an event (Admin only)' }) // swagger doc
+  @Delete(':id')
+  async deleteEvent(@Param('id') id: number) {
+    return this.eventsService.remove(id);
+  }
+
   @ApiOperation({ summary: 'Register current user to an event' }) // swagger doc
   @Post(':id/register')
   async registerToEvent(@Request() req: any, @Param('id') id: number) {
@@ -77,5 +95,17 @@ export class EventsController {
   @Get(':id/registered-users')
   async getRegisteredUsers(@Param('id') id: number) {
     return this.registrationService.getRegisteredUsers(id);
+  }
+
+  @UseGuards(AdminGuard)
+  @ApiOperation({
+    summary: 'Remove a user registration from event (Admin only)',
+  }) // swagger doc
+  @Delete(':eventId/registration/:userId')
+  async removeUserRegistration(
+    @Param('eventId') eventId: number,
+    @Param('userId') userId: number,
+  ) {
+    return this.registrationService.unregister(userId, eventId);
   }
 }

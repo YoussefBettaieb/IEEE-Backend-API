@@ -2,11 +2,16 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Event } from './event.entity';
+import { Registration } from './registration.entity';
 import { CreateEventDto } from './dtos/create-event.dto';
 
 @Injectable()
 export class EventsService {
-  constructor(@InjectRepository(Event) private repo: Repository<Event>) {}
+  constructor(
+    @InjectRepository(Event) private repo: Repository<Event>,
+    @InjectRepository(Registration)
+    private registrationRepo: Repository<Registration>,
+  ) {}
 
   async findAll() {
     return this.repo.find();
@@ -35,6 +40,11 @@ export class EventsService {
     if (!event) {
       throw new Error('Event not found');
     }
+
+    // Delete all registrations for this event first
+    await this.registrationRepo.delete({ event: { id } });
+
+    // Then delete the event
     return this.repo.remove(event);
   }
 
