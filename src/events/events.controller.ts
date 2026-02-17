@@ -33,6 +33,12 @@ export class EventsController {
     return this.eventsService.findAll();
   }
 
+  @ApiOperation({ summary: 'Get current user registrations' })
+  @Get('me/registrations')
+  async getUserRegistrations(@Request() req: any) {
+    return this.registrationService.getUserRegistrations(req.user.id);
+  }
+
   /* @Get()
   async getEvents(
     @Query('category') category?: string,

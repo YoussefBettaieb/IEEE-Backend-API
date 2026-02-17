@@ -80,6 +80,20 @@ export class RegistrationService {
     }));
   }
 
+  async getUserRegistrations(userId: number) {
+    const registrations = await this.registrationRepo.find({
+      where: { user: { id: userId } },
+      relations: ['event'],
+    });
+
+    return registrations.map((registration) => ({
+      id: registration.event.id,
+      eventId: registration.event.id,
+      title: registration.event.title,
+      registeredAt: registration.registeredAt,
+    }));
+  }
+
   async unregister(userId: number, eventId: number) {
     const registration = await this.registrationRepo.findOne({
       where: { user: { id: userId }, event: { id: eventId } },
