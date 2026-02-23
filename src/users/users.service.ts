@@ -24,6 +24,16 @@ export class UsersService {
     return this.repo.findOne({ where: { email } });
   }
 
+  findOneWithRegistrations(email: string) {
+    if (!email) {
+      return null;
+    }
+    return this.repo.findOne({
+      where: { email },
+      relations: ['registrations'],
+    });
+  }
+
   findOneById(id: number) {
     if (!id) {
       return null;

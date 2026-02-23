@@ -7,6 +7,7 @@ import {
   Body,
   Delete,
   Param,
+  ForbiddenException,
 } from '@nestjs/common';
 import { User } from './user.entity';
 import { UsersService } from './users.service';
@@ -55,9 +56,14 @@ export class UsersController {
   @ApiOperation({ summary: 'Update user role (Admin only)' }) // swagger doc
   @Put(':id/role')
   async updateUserRole(
+    @Request() req: any,
     @Param('id') id: number,
     @Body() body: { isAdmin: boolean },
   ) {
+    const targetId = Number(id);
+    if (req.user?.id === targetId && body.isAdmin === false) {
+      throw new ForbiddenException('You cannot remove your own admin role');
+    }
     return this.usersService.updateById(id, { isAdmin: body.isAdmin } as any);
   }
 

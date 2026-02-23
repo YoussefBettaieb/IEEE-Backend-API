@@ -15,6 +15,7 @@ export enum Chapter {
   IAS = 'IAS',
   SIGHT = 'SIGHT',
   WIE = 'WIE',
+  EMBS = 'EMBS',
 }
 
 @Entity()

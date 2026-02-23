@@ -114,4 +114,17 @@ export class EventsController {
   ) {
     return this.registrationService.unregister(userId, eventId);
   }
+
+  @ApiOperation({ summary: 'Get check-in token for a registration' })
+  @Get(':id/checkin-token')
+  async getCheckinToken(@Request() req: any, @Param('id') id: number) {
+    return this.registrationService.getRegistrationToken(req.user.id, id);
+  }
+
+  @UseGuards(AdminGuard)
+  @ApiOperation({ summary: 'Verify QR code and check in user (Admin only)' })
+  @Post('check-in')
+  async verifyCheckin(@Body() body: { token: string }) {
+    return this.registrationService.verifyCheckin(body.token);
+  }
 }

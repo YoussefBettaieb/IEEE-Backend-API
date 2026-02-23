@@ -3,6 +3,7 @@ import {
   PrimaryGeneratedColumn,
   ManyToOne,
   CreateDateColumn,
+  Column,
 } from 'typeorm';
 import { User } from '../users/user.entity';
 import { Event } from './event.entity';
@@ -20,4 +21,13 @@ export class Registration {
 
   @CreateDateColumn()
   registeredAt: Date;
+
+  @Column({ nullable: true })
+  checkinToken: string;
+
+  @Column({ default: false })
+  isCheckedIn: boolean;
+
+  @Column({ type: 'timestamp', nullable: true })
+  checkedInAt: Date;
 }

@@ -25,13 +25,19 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // payload.sub is user id
     console.log('🔍 JWT Payload received:', payload); // LOG PAYLOAD
 
-    const user = await this.usersService.findOne(payload.email);
+    const user = await this.usersService.findOneWithRegistrations(
+      payload.email,
+    );
     console.log('👤 User found in DB:', user); // LOG USER
 
     if (!user) {
       throw new UnauthorizedException('User not found');
     }
-    // optionally throw if user not found
-    return user; // assigned to req.user
+
+    // Ensure isAdmin flag is properly set from database
+    return {
+      ...user,
+      isAdmin: user.isAdmin === true, // Explicitly ensure boolean
+    };
   }
 }
