@@ -26,29 +26,35 @@ export class AuthService {
   }
 
   async signup(email: string, password: string, fullName: string) {
-    const users = await this.usersService.find(email);
+    const normalizedEmail = email.toLowerCase().trim();
+    const users = await this.usersService.find(normalizedEmail);
     if (users.length) {
       throw new BadRequestException('Email in use');
     }
     const salt = randomBytes(8).toString('hex');
     const hash = (await scrypt(password, salt, 32)) as Buffer;
     const result = salt + '.' + hash.toString('hex');
-    const user = await this.usersService.create(email, result, fullName);
+    const user = await this.usersService.create(
+      normalizedEmail,
+      result,
+      fullName.trim(),
+    );
     const token = this.generateToken(user);
 
     return { user, token };
   }
 
   async signin(email: string, password: string) {
-    const [user] = await this.usersService.find(email);
+    const normalizedEmail = email.toLowerCase().trim();
+    const [user] = await this.usersService.find(normalizedEmail);
     if (!user) {
-      throw new NotFoundException('user not found');
+      throw new NotFoundException('User not found');
     }
 
     const [salt, storedHash] = user.password.split('.');
     const hash = (await scrypt(password, salt, 32)) as Buffer;
     if (storedHash !== hash.toString('hex')) {
-      throw new BadRequestException('bad password');
+      throw new BadRequestException('Invalid credentials');
     }
     const token = this.generateToken(user);
 

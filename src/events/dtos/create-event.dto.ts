@@ -3,7 +3,7 @@ import {
   IsInt,
   IsBoolean,
   IsEnum,
-  IsDateString,
+  IsISO8601,
   Min,
 } from 'class-validator';
 import { Chapter } from '../event.entity';
@@ -24,17 +24,26 @@ export class CreateEventDto {
   @IsString()
   description: string;
 
-  @ApiProperty({ example: '2024-12-01', description: 'Date of the event' })
-  @IsDateString()
-  date: Date;
+  @ApiProperty({
+    example: '2024-12-01T00:00:00.000Z',
+    description: 'Date of the event',
+  })
+  @IsISO8601()
+  date: string;
 
-  @ApiProperty({ example: '10:00 AM', description: 'Start time of the event' })
-  @IsDateString()
-  startTime: Date;
+  @ApiProperty({
+    example: '2024-12-01T10:00:00.000Z',
+    description: 'Start time of the event',
+  })
+  @IsISO8601()
+  startTime: string;
 
-  @ApiProperty({ example: '12:00 PM', description: 'End time of the event' })
-  @IsDateString()
-  endTime: Date;
+  @ApiProperty({
+    example: '2024-12-01T12:00:00.000Z',
+    description: 'End time of the event',
+  })
+  @IsISO8601()
+  endTime: string;
 
   @ApiProperty({
     example: 'Main Auditorium',

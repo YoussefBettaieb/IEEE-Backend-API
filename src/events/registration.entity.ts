@@ -4,19 +4,26 @@ import {
   ManyToOne,
   CreateDateColumn,
   Column,
+  Index,
+  Unique,
 } from 'typeorm';
 import { User } from '../users/user.entity';
 import { Event } from './event.entity';
 
 @Entity()
+@Unique(['user', 'event']) // Prevent duplicate registrations at DB level
 export class Registration {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @ManyToOne(() => User, (user) => user.registrations)
+  @Index()
+  @ManyToOne(() => User, (user) => user.registrations, { onDelete: 'CASCADE' })
   user: User;
 
-  @ManyToOne(() => Event, (event) => event.userRegistrations)
+  @Index()
+  @ManyToOne(() => Event, (event) => event.userRegistrations, {
+    onDelete: 'CASCADE',
+  })
   event: Event;
 
   @CreateDateColumn()

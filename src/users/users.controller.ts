@@ -64,6 +64,9 @@ export class UsersController {
     if (req.user?.id === targetId && body.isAdmin === false) {
       throw new ForbiddenException('You cannot remove your own admin role');
     }
+    if (req.user?.id === targetId && body.isAdmin === true) {
+      throw new ForbiddenException('You cannot promote yourself');
+    }
     return this.usersService.updateById(id, { isAdmin: body.isAdmin } as any);
   }
 

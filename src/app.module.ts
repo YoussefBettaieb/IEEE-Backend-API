@@ -3,25 +3,26 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { User } from './users/user.entity';
 import { UsersModule } from './users/users.module';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { EventsModule } from './events/events.module';
-import { Event } from './events/event.entity';
-import { Registration } from './events/registration.entity';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
-      isGlobal: true, // ← VERY IMPORTANT
+      isGlobal: true,
       envFilePath: '.env',
     }),
     AuthModule,
-    TypeOrmModule.forRoot({
-      type: 'postgres',
-      url: process.env.DATABASE_URL,
-      autoLoadEntities: true,
-      synchronize: true, // auto-create tables in dev mode
+    TypeOrmModule.forRootAsync({
+      imports: [ConfigModule],
+      useFactory: (configService: ConfigService) => ({
+        type: 'postgres' as const,
+        url: configService.get<string>('DATABASE_URL'),
+        autoLoadEntities: true,
+        synchronize: true, // Disable in production!
+      }),
+      inject: [ConfigService],
     }),
     UsersModule,
     EventsModule,

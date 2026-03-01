@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Event } from './event.entity';
@@ -14,32 +14,33 @@ export class EventsService {
   ) {}
 
   async findAll() {
-    return this.repo.find();
+    return this.repo.find({ order: { date: 'ASC' } });
   }
 
   async findOne(id: number) {
-    return this.repo.findOne({ where: { id } });
+    const event = await this.repo.findOne({ where: { id } });
+    if (!event) {
+      throw new NotFoundException(`Event with ID ${id} not found`);
+    }
+    return event;
   }
 
   async create(createEventDto: CreateEventDto) {
-    const event = this.repo.create(createEventDto);
+    const event = this.repo.create({
+      ...createEventDto,
+      registrations: 0, // Always start with 0 registrations
+    });
     return this.repo.save(event);
   }
 
   async update(id: number, attrs: Partial<CreateEventDto>) {
     const event = await this.findOne(id);
-    if (!event) {
-      throw new Error('Event not found');
-    }
     Object.assign(event, attrs);
     return this.repo.save(event);
   }
 
   async remove(id: number) {
     const event = await this.findOne(id);
-    if (!event) {
-      throw new Error('Event not found');
-    }
 
     // Delete all registrations for this event first
     await this.registrationRepo.delete({ event: { id } });

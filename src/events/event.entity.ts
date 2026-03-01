@@ -1,13 +1,16 @@
 import {
   OneToMany,
-  AfterInsert,
-  AfterRemove,
-  AfterUpdate,
   Entity,
   Column,
   PrimaryGeneratedColumn,
+  CreateDateColumn,
 } from 'typeorm';
-import { Registration } from '../events/registration.entity';
+import { Registration } from './registration.entity';
+
+// IMPORTANT: Never modify this enum while synchronize: true is enabled.
+// Adding/removing values causes TypeORM to drop & recreate the column,
+// destroying all existing data. Use a raw SQL migration instead:
+//   ALTER TYPE "public"."event_chapter_enum" ADD VALUE 'NEW_VALUE';
 export enum Chapter {
   CS = 'CS',
   RAS = 'RAS',
@@ -26,65 +29,53 @@ export class Event {
   @Column()
   title: string;
 
-  @Column()
+  @Column({ default: '' })
   description: string;
 
-  @Column()
+  @Column({ nullable: true })
   date: Date;
 
-  @Column()
+  @Column({ nullable: true })
   startTime: Date;
 
-  @Column()
+  @Column({ nullable: true })
   endTime: Date;
 
-  @Column()
+  @Column({ default: '' })
   category: string;
 
-  @Column()
+  @Column({ default: 0 })
   attendeesNeeded: number;
 
-  @Column()
+  @Column({ default: 0 })
   registrations: number;
 
-  @Column()
+  @Column({ default: 'Beginner' })
   level: string;
 
-  @Column()
+  @Column({ type: 'enum', enum: Chapter, nullable: true })
   chapter: Chapter;
 
-  @Column()
+  @Column({ default: false })
   isFeatured: boolean;
 
-  @Column()
+  @Column({ default: '' })
   speakerFullName: string;
 
-  @Column()
+  @Column({ default: '' })
   aboutSpeaker: string;
 
-  @Column()
+  @Column({ default: '' })
   prerequisites: string;
 
-  @Column()
+  @Column({ default: '' })
   speakerLinkedin: string;
+
+  @CreateDateColumn({ nullable: true })
+  createdAt: Date;
 
   @OneToMany(() => Registration, (registration) => registration.event, {
     cascade: true,
   })
   userRegistrations: Registration[];
-
-  @AfterInsert() // hooks executed after saving
-  logInsert() {
-    console.log('inserted event with id:', this.id);
-  }
-
-  @AfterUpdate() // hooks executed after updating
-  logUpdate() {
-    console.log('updated event with id:', this.id);
-  }
-
-  @AfterRemove() // hooks executed after removing
-  logRemove() {
-    console.log('removed event with id:', this.id);
-  }
 }

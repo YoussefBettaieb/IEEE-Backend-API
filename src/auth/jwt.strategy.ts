@@ -1,18 +1,18 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { Strategy, ExtractJwt } from 'passport-jwt';
 import { UsersService } from '../users/users.service';
-import { UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
+  private readonly logger = new Logger(JwtStrategy.name);
+
   constructor(
     private usersService: UsersService,
     private configService: ConfigService,
   ) {
     const secret = configService.get<string>('JWT_SECRET') || 'my_secret_key';
-    console.log('🔑 JWT Secret being used:', secret);
 
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
@@ -21,23 +21,21 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
   }
 
-  async validate(payload: any) {
-    // payload.sub is user id
-    console.log('🔍 JWT Payload received:', payload); // LOG PAYLOAD
-
+  async validate(payload: { sub: number; email: string; isAdmin: boolean }) {
     const user = await this.usersService.findOneWithRegistrations(
       payload.email,
     );
-    console.log('👤 User found in DB:', user); // LOG USER
 
     if (!user) {
+      this.logger.warn(
+        `JWT validation failed: user not found for email ${payload.email}`,
+      );
       throw new UnauthorizedException('User not found');
     }
 
-    // Ensure isAdmin flag is properly set from database
     return {
       ...user,
-      isAdmin: user.isAdmin === true, // Explicitly ensure boolean
+      isAdmin: user.isAdmin === true,
     };
   }
 }
