@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { Event } from './event.entity';
 import { Registration } from './registration.entity';
 import { CreateEventDto } from './dtos/create-event.dto';
+import { UpdateEventDto } from './dtos/update-event.dto';
 
 @Injectable()
 export class EventsService {
@@ -33,7 +34,7 @@ export class EventsService {
     return this.repo.save(event);
   }
 
-  async update(id: number, attrs: Partial<CreateEventDto>) {
+  async update(id: number, attrs: UpdateEventDto) {
     const event = await this.findOne(id);
     Object.assign(event, attrs);
     return this.repo.save(event);

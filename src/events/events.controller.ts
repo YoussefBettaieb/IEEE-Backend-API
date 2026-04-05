@@ -5,12 +5,12 @@ import {
   Put,
   Body,
   Param,
-  Query,
   Controller,
   UseGuards,
   Request,
 } from '@nestjs/common';
 import { CreateEventDto } from './dtos/create-event.dto';
+import { UpdateEventDto } from './dtos/update-event.dto';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import { AdminGuard } from 'src/guards/admin.guard';
 import { RegistrationService } from './registration.service';
@@ -64,10 +64,7 @@ export class EventsController {
   @UseGuards(AdminGuard)
   @ApiOperation({ summary: 'Update an event (Admin only)' }) // swagger doc
   @Put(':id')
-  async updateEvent(
-    @Param('id') id: number,
-    @Body() body: Partial<CreateEventDto>,
-  ) {
+  async updateEvent(@Param('id') id: number, @Body() body: UpdateEventDto) {
     return this.eventsService.update(id, body);
   }
 

@@ -3,8 +3,8 @@ import {
   BadRequestException,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, QueryFailedError, Repository } from 'typeorm';
 import { Registration } from './registration.entity';
 import { User } from '../users/user.entity';
 import { Event } from './event.entity';
@@ -18,31 +18,10 @@ export class RegistrationService {
     @InjectRepository(User) private userRepo: Repository<User>,
     @InjectRepository(Event) private eventRepo: Repository<Event>,
     private jwtService: JwtService,
+    @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
   async registerUserToEvent(userId: number, eventId: number) {
-    const user = await this.userRepo.findOne({ where: { id: userId } });
-    const event = await this.eventRepo.findOne({ where: { id: eventId } });
-
-    if (!user) throw new NotFoundException('User not found');
-    if (!event) throw new NotFoundException('Event not found');
-
-    // Check if already registered
-    const existing = await this.registrationRepo.findOne({
-      where: { user: { id: userId }, event: { id: eventId } },
-    });
-    if (existing) {
-      throw new BadRequestException('User already registered for this event');
-    }
-
-    // Check if event has reached maximum capacity
-    if (event.registrations >= event.attendeesNeeded) {
-      throw new BadRequestException('Event has reached maximum capacity');
-    }
-
-    event.registrations += 1;
-    const updatedEvent = await this.eventRepo.save(event);
-
     // Generate check-in token
     const checkinToken = this.jwtService.sign({
       type: 'event-checkin',
@@ -50,13 +29,62 @@ export class RegistrationService {
       eventId: eventId,
     });
 
-    const registration = this.registrationRepo.create({
-      user,
-      event,
-      checkinToken,
-      isCheckedIn: false,
+    try {
+      await this.dataSource.transaction(async (manager) => {
+        const user = await manager.findOne(User, { where: { id: userId } });
+        if (!user) {
+          throw new NotFoundException('User not found');
+        }
+
+        const event = await manager.findOne(Event, { where: { id: eventId } });
+        if (!event) {
+          throw new NotFoundException('Event not found');
+        }
+
+        const incrementResult = await manager
+          .createQueryBuilder()
+          .update(Event)
+          .set({ registrations: () => '"registrations" + 1' })
+          .where('id = :eventId', { eventId })
+          .andWhere('"registrations" < "attendeesNeeded"')
+          .execute();
+
+        if ((incrementResult.affected ?? 0) === 0) {
+          throw new BadRequestException('Event has reached maximum capacity');
+        }
+
+        const registration = manager.create(Registration, {
+          user,
+          event,
+          checkinToken,
+          isCheckedIn: false,
+        });
+
+        await manager.save(Registration, registration);
+      });
+    } catch (e) {
+      if (e instanceof BadRequestException || e instanceof NotFoundException) {
+        throw e;
+      }
+
+      if (e instanceof QueryFailedError) {
+        const driverError = e.driverError as { code?: string } | undefined;
+        if (driverError?.code === '23505') {
+          throw new BadRequestException(
+            'User already registered for this event',
+          );
+        }
+      }
+
+      throw e;
+    }
+
+    const updatedEvent = await this.eventRepo.findOne({
+      where: { id: eventId },
     });
-    await this.registrationRepo.save(registration);
+    if (!updatedEvent) {
+      throw new NotFoundException('Event not found');
+    }
 
     return {
       message: 'Successfully registered',
@@ -201,18 +229,28 @@ export class RegistrationService {
   }
 
   async unregister(userId: number, eventId: number) {
-    const registration = await this.registrationRepo.findOne({
-      where: { user: { id: userId }, event: { id: eventId } },
+    await this.dataSource.transaction(async (manager) => {
+      const registration = await manager.findOne(Registration, {
+        where: { user: { id: userId }, event: { id: eventId } },
+      });
+
+      if (!registration) {
+        throw new NotFoundException('Registration not found');
+      }
+
+      await manager.delete(Registration, { id: registration.id });
+
+      await manager
+        .createQueryBuilder()
+        .update(Event)
+        .set({
+          registrations: () =>
+            'CASE WHEN "registrations" > 0 THEN "registrations" - 1 ELSE 0 END',
+        })
+        .where('id = :eventId', { eventId })
+        .execute();
     });
-    if (!registration) throw new NotFoundException('Registration not found');
 
-    const event = await this.eventRepo.findOne({ where: { id: eventId } });
-    if (event) {
-      event.registrations -= 1;
-      await this.eventRepo.save(event);
-    }
-
-    await this.registrationRepo.remove(registration);
     return {
       message: 'User unregistered successfully',
       userId,
