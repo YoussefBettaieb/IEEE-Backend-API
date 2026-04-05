@@ -8,16 +8,22 @@ import { RegistrationService } from './registration.service';
 import { User } from 'src/users/user.entity';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import type { StringValue } from 'ms';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Event, Registration, User]),
     JwtModule.registerAsync({
       imports: [ConfigModule],
-      useFactory: async (configService: ConfigService) => ({
-        secret: configService.get<string>('JWT_SECRET') || 'my_secret_key',
-        signOptions: { expiresIn: '30d' },
-      }),
+      useFactory: (configService: ConfigService) => {
+        const secret = configService.getOrThrow<string>('JWT_SECRET');
+        const expiresIn =
+          configService.getOrThrow<StringValue>('JWT_EXPIRES_IN');
+        return {
+          secret,
+          signOptions: { expiresIn },
+        };
+      },
       inject: [ConfigService],
     }),
   ],

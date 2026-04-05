@@ -4,10 +4,12 @@ import { ValidationPipe, Logger } from '@nestjs/common';
 import { ClassSerializerInterceptor } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { ConfigService } from '@nestjs/config';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const logger = new Logger('Bootstrap');
+  const configService = app.get(ConfigService);
 
   // Enable global validation pipe so DTO decorators from class-validator are enforced
   app.useGlobalPipes(
@@ -20,7 +22,26 @@ async function bootstrap() {
   );
   app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector)));
 
-  app.enableCors();
+  const allowedOrigins = configService
+    .getOrThrow<string>('CORS_ORIGINS')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0);
+
+  app.enableCors({
+    origin: (origin, callback) => {
+      // Native mobile clients often send no Origin header.
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error('Not allowed by CORS'), false);
+    },
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Authorization', 'Content-Type', 'Accept'],
+    credentials: true,
+  });
 
   const config = new DocumentBuilder()
     .setTitle('Mobile IEEE Backend API')
@@ -42,6 +63,7 @@ async function bootstrap() {
   const port = process.env.PORT ?? 5000;
   await app.listen(port);
   logger.log(`Application running on port ${port}`);
+  logger.log(`CORS allowlist enabled for ${allowedOrigins.length} origin(s)`);
 }
 
 bootstrap();

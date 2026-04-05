@@ -53,20 +53,23 @@ Create a `.env` file in the root directory with the following variables:
 
 ```env
 # Database
-DB_TYPE=postgres
-DB_HOST=localhost
-DB_PORT=5432
-DB_USERNAME=your_username
-DB_PASSWORD=your_password
-DB_DATABASE=ieee_app
+DATABASE_URL=postgresql://your_username:your_password@localhost:5432/ieee_app
 
 # JWT
-JWT_SECRET=your_jwt_secret_key
+JWT_SECRET=replace_with_a_strong_secret_at_least_32_characters
 JWT_EXPIRES_IN=7d
+
+# CORS (comma-separated allowlist)
+CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 
 # Application
 PORT=5000
 ```
+
+Notes:
+
+- `JWT_SECRET`, `DATABASE_URL`, and `CORS_ORIGINS` are required at startup.
+- The app will fail fast on boot if these values are missing or invalid.
 
 ## 🚀 Running the Application
 
