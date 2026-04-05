@@ -14,8 +14,41 @@ export class EventsService {
     private registrationRepo: Repository<Registration>,
   ) {}
 
+  private async getRegistrationCountMap(
+    eventIds: number[],
+  ): Promise<Map<number, number>> {
+    const counts = new Map<number, number>();
+    if (eventIds.length === 0) {
+      return counts;
+    }
+
+    const rawCounts = await this.registrationRepo
+      .createQueryBuilder('registration')
+      .leftJoin('registration.event', 'event')
+      .select('event.id', 'eventId')
+      .addSelect('COUNT(registration.id)', 'count')
+      .where('event.id IN (:...eventIds)', { eventIds })
+      .groupBy('event.id')
+      .getRawMany<{ eventId: string; count: string }>();
+
+    for (const row of rawCounts) {
+      counts.set(Number(row.eventId), Number(row.count));
+    }
+
+    return counts;
+  }
+
   async findAll() {
-    return this.repo.find({ order: { date: 'ASC' } });
+    const events = await this.repo.find({ order: { date: 'ASC' } });
+    const countMap = await this.getRegistrationCountMap(
+      events.map((event) => event.id),
+    );
+
+    for (const event of events) {
+      event.registrations = countMap.get(event.id) ?? 0;
+    }
+
+    return events;
   }
 
   async findOne(id: number) {
@@ -23,6 +56,10 @@ export class EventsService {
     if (!event) {
       throw new NotFoundException(`Event with ID ${id} not found`);
     }
+
+    const countMap = await this.getRegistrationCountMap([id]);
+    event.registrations = countMap.get(id) ?? 0;
+
     return event;
   }
 

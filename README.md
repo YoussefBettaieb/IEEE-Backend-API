@@ -58,6 +58,7 @@ DATABASE_URL=postgresql://your_username:your_password@localhost:5432/ieee_app
 # JWT
 JWT_SECRET=replace_with_a_strong_secret_at_least_32_characters
 JWT_EXPIRES_IN=7d
+CHECKIN_TOKEN_TTL=15m
 
 # CORS (comma-separated allowlist)
 CORS_ORIGINS=http://localhost:3000,http://localhost:5173
@@ -70,6 +71,7 @@ Notes:
 
 - `JWT_SECRET`, `DATABASE_URL`, and `CORS_ORIGINS` are required at startup.
 - The app will fail fast on boot if these values are missing or invalid.
+- `CHECKIN_TOKEN_TTL` controls QR check-in token lifetime (recommended: `15m`).
 
 ## 🚀 Running the Application
 

@@ -6,6 +6,18 @@ import { Reflector } from '@nestjs/core';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 
+function isLocalDevOrigin(origin: string): boolean {
+  try {
+    const url = new URL(origin);
+    return (
+      (url.hostname === 'localhost' || url.hostname === '127.0.0.1') &&
+      (url.protocol === 'http:' || url.protocol === 'https:')
+    );
+  } catch {
+    return false;
+  }
+}
+
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const logger = new Logger('Bootstrap');
@@ -28,15 +40,27 @@ async function bootstrap() {
     .map((origin) => origin.trim())
     .filter((origin) => origin.length > 0);
 
+  const nodeEnv = configService.get<string>('NODE_ENV') ?? 'development';
+  const allowLocalDevWildcard = nodeEnv !== 'production';
+
   app.enableCors({
-    origin: (origin, callback) => {
+    origin: (
+      origin: string | undefined,
+      callback: (err: Error | null, allow?: boolean) => void,
+    ) => {
       // Native mobile clients often send no Origin header.
       if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
         return;
       }
 
-      callback(new Error('Not allowed by CORS'), false);
+      // Flutter web often starts on random localhost ports in development.
+      if (allowLocalDevWildcard && isLocalDevOrigin(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error(`Not allowed by CORS: ${origin}`), false);
     },
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Authorization', 'Content-Type', 'Accept'],
@@ -63,7 +87,9 @@ async function bootstrap() {
   const port = process.env.PORT ?? 5000;
   await app.listen(port);
   logger.log(`Application running on port ${port}`);
-  logger.log(`CORS allowlist enabled for ${allowedOrigins.length} origin(s)`);
+  logger.log(
+    `CORS allowlist enabled for ${allowedOrigins.length} origin(s), NODE_ENV=${nodeEnv}`,
+  );
 }
 
 bootstrap();

@@ -40,6 +40,7 @@ function validateEnv(env: Record<string, unknown>) {
   return {
     ...env,
     JWT_EXPIRES_IN: String(env.JWT_EXPIRES_IN ?? '30d'),
+    CHECKIN_TOKEN_TTL: String(env.CHECKIN_TOKEN_TTL ?? '15m'),
   };
 }
 

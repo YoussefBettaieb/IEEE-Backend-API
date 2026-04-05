@@ -9,6 +9,15 @@ import { Registration } from './registration.entity';
 import { User } from '../users/user.entity';
 import { Event } from './event.entity';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
+import type { StringValue } from 'ms';
+
+type CheckinTokenPayload = {
+  type: 'event-checkin';
+  registrationId?: number;
+  userId: number;
+  eventId: number;
+};
 
 @Injectable()
 export class RegistrationService {
@@ -18,16 +27,31 @@ export class RegistrationService {
     @InjectRepository(User) private userRepo: Repository<User>,
     @InjectRepository(Event) private eventRepo: Repository<Event>,
     private jwtService: JwtService,
+    private configService: ConfigService,
     @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
+  private createCheckinToken(payload: {
+    registrationId: number;
+    userId: number;
+    eventId: number;
+  }): string {
+    const expiresIn =
+      this.configService.getOrThrow<StringValue>('CHECKIN_TOKEN_TTL');
+
+    return this.jwtService.sign(
+      {
+        type: 'event-checkin',
+        registrationId: payload.registrationId,
+        userId: payload.userId,
+        eventId: payload.eventId,
+      },
+      { expiresIn },
+    );
+  }
+
   async registerUserToEvent(userId: number, eventId: number) {
-    // Generate check-in token
-    const checkinToken = this.jwtService.sign({
-      type: 'event-checkin',
-      userId: userId,
-      eventId: eventId,
-    });
+    let checkinToken = '';
 
     try {
       await this.dataSource.transaction(async (manager) => {
@@ -56,11 +80,21 @@ export class RegistrationService {
         const registration = manager.create(Registration, {
           user,
           event,
-          checkinToken,
           isCheckedIn: false,
         });
 
-        await manager.save(Registration, registration);
+        const savedRegistration = await manager.save(
+          Registration,
+          registration,
+        );
+        checkinToken = this.createCheckinToken({
+          registrationId: savedRegistration.id,
+          userId,
+          eventId,
+        });
+
+        savedRegistration.checkinToken = checkinToken;
+        await manager.save(Registration, savedRegistration);
       });
     } catch (e) {
       if (e instanceof BadRequestException || e instanceof NotFoundException) {
@@ -77,6 +111,10 @@ export class RegistrationService {
       }
 
       throw e;
+    }
+
+    if (!checkinToken) {
+      throw new BadRequestException('Failed to issue check-in token');
     }
 
     const updatedEvent = await this.eventRepo.findOne({
@@ -148,12 +186,23 @@ export class RegistrationService {
     });
     if (!registration) throw new NotFoundException('Registration not found');
 
-    // If token doesn't exist (legacy registrations), generate one
-    if (!registration.checkinToken) {
-      registration.checkinToken = this.jwtService.sign({
-        type: 'event-checkin',
-        userId: userId,
-        eventId: eventId,
+    // If token doesn't exist or is legacy without registrationId, generate one.
+    const decoded = registration.checkinToken
+      ? this.jwtService.decode(registration.checkinToken)
+      : null;
+    const decodedPayload =
+      decoded && typeof decoded === 'object'
+        ? (decoded as Partial<CheckinTokenPayload>)
+        : null;
+
+    if (
+      !registration.checkinToken ||
+      typeof decodedPayload?.registrationId !== 'number'
+    ) {
+      registration.checkinToken = this.createCheckinToken({
+        registrationId: registration.id,
+        userId,
+        eventId,
       });
       await this.registrationRepo.save(registration);
     }
@@ -166,22 +215,35 @@ export class RegistrationService {
 
   async verifyCheckin(token: string) {
     try {
-      const payload = this.jwtService.verify(token);
+      const payload = this.jwtService.verify<CheckinTokenPayload>(token);
 
       if (payload.type !== 'event-checkin') {
         throw new BadRequestException('Invalid token type');
       }
 
-      const registration = await this.registrationRepo.findOne({
-        where: {
-          user: { id: payload.userId },
-          event: { id: payload.eventId },
-        },
-        relations: ['user', 'event'],
-      });
+      const registration =
+        typeof payload.registrationId === 'number'
+          ? await this.registrationRepo.findOne({
+              where: { id: payload.registrationId },
+              relations: ['user', 'event'],
+            })
+          : await this.registrationRepo.findOne({
+              where: {
+                user: { id: payload.userId },
+                event: { id: payload.eventId },
+              },
+              relations: ['user', 'event'],
+            });
 
       if (!registration) {
         throw new NotFoundException('Registration not found');
+      }
+
+      if (
+        registration.user.id !== payload.userId ||
+        registration.event.id !== payload.eventId
+      ) {
+        throw new BadRequestException('Token does not match registration');
       }
 
       if (registration.isCheckedIn) {
