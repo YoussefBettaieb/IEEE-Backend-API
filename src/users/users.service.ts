@@ -3,6 +3,7 @@ import { User } from './user.entity';
 import { Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Registration } from '../events/registration.entity';
+import { Event } from '../events/event.entity';
 
 @Injectable()
 export class UsersService {
@@ -10,7 +11,36 @@ export class UsersService {
     @InjectRepository(User) private repo: Repository<User>,
     @InjectRepository(Registration)
     private registrationRepo: Repository<Registration>,
+    @InjectRepository(Event)
+    private eventRepo: Repository<Event>,
   ) {}
+
+  private async syncEventRegistrationCounts(eventIds: number[]) {
+    if (eventIds.length === 0) {
+      return;
+    }
+
+    const rawCounts = await this.registrationRepo
+      .createQueryBuilder('registration')
+      .leftJoin('registration.event', 'event')
+      .select('event.id', 'eventId')
+      .addSelect('COUNT(registration.id)', 'count')
+      .where('event.id IN (:...eventIds)', { eventIds })
+      .groupBy('event.id')
+      .getRawMany<{ eventId: string; count: string }>();
+
+    const countMap = new Map<number, number>();
+    for (const row of rawCounts) {
+      countMap.set(Number(row.eventId), Number(row.count));
+    }
+
+    for (const eventId of eventIds) {
+      await this.eventRepo.update(
+        { id: eventId },
+        { registrations: countMap.get(eventId) ?? 0 },
+      );
+    }
+  }
 
   create(email: string, password: string, fullName: string) {
     const user = this.repo.create({ email, password, fullName });
@@ -81,8 +111,23 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
 
+    const existingRegistrations = await this.registrationRepo.find({
+      where: { user: { id } },
+      relations: ['event'],
+    });
+    const affectedEventIds = Array.from(
+      new Set(
+        existingRegistrations
+          .map((registration) => registration.event?.id)
+          .filter((eventId): eventId is number => typeof eventId === 'number'),
+      ),
+    );
+
     // Delete all registrations for this user first
     await this.registrationRepo.delete({ user: { id } });
+
+    // Keep denormalized event counters in sync with actual registration rows.
+    await this.syncEventRegistrationCounts(affectedEventIds);
 
     // Then delete the user
     return this.repo.remove(user);

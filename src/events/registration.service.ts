@@ -19,6 +19,8 @@ type CheckinTokenPayload = {
   eventId: number;
 };
 
+const REGISTRATION_BLOCKED_DEMO_EMAILS = new Set(['ieee@example.com']);
+
 @Injectable()
 export class RegistrationService {
   constructor(
@@ -50,6 +52,15 @@ export class RegistrationService {
     );
   }
 
+  private async getEventRegistrationCount(
+    manager: DataSource['manager'],
+    eventId: number,
+  ): Promise<number> {
+    return manager.count(Registration, {
+      where: { event: { id: eventId } },
+    });
+  }
+
   async registerUserToEvent(userId: number, eventId: number) {
     let checkinToken = '';
 
@@ -60,20 +71,27 @@ export class RegistrationService {
           throw new NotFoundException('User not found');
         }
 
-        const event = await manager.findOne(Event, { where: { id: eventId } });
+        const normalizedEmail = user.email.trim().toLowerCase();
+        if (REGISTRATION_BLOCKED_DEMO_EMAILS.has(normalizedEmail)) {
+          throw new BadRequestException(
+            'Demo account cannot register for events. Please create your own account.',
+          );
+        }
+
+        const event = await manager
+          .createQueryBuilder(Event, 'event')
+          .setLock('pessimistic_write')
+          .where('event.id = :eventId', { eventId })
+          .getOne();
         if (!event) {
           throw new NotFoundException('Event not found');
         }
 
-        const incrementResult = await manager
-          .createQueryBuilder()
-          .update(Event)
-          .set({ registrations: () => '"registrations" + 1' })
-          .where('id = :eventId', { eventId })
-          .andWhere('"registrations" < "attendeesNeeded"')
-          .execute();
-
-        if ((incrementResult.affected ?? 0) === 0) {
+        const currentRegistrationCount = await this.getEventRegistrationCount(
+          manager,
+          eventId,
+        );
+        if (currentRegistrationCount >= event.attendeesNeeded) {
           throw new BadRequestException('Event has reached maximum capacity');
         }
 
@@ -95,6 +113,12 @@ export class RegistrationService {
 
         savedRegistration.checkinToken = checkinToken;
         await manager.save(Registration, savedRegistration);
+
+        await manager.update(
+          Event,
+          { id: eventId },
+          { registrations: currentRegistrationCount + 1 },
+        );
       });
     } catch (e) {
       if (e instanceof BadRequestException || e instanceof NotFoundException) {
@@ -141,7 +165,11 @@ export class RegistrationService {
   async getEventAttendees(eventId: number) {
     const event = await this.eventRepo.findOne({ where: { id: eventId } });
     if (!event) throw new NotFoundException('Event not found');
-    return event.registrations;
+
+    const actualCount = await this.registrationRepo.count({
+      where: { event: { id: eventId } },
+    });
+    return actualCount;
   }
 
   async getRegisteredUsers(eventId: number) {
@@ -302,15 +330,15 @@ export class RegistrationService {
 
       await manager.delete(Registration, { id: registration.id });
 
-      await manager
-        .createQueryBuilder()
-        .update(Event)
-        .set({
-          registrations: () =>
-            'CASE WHEN "registrations" > 0 THEN "registrations" - 1 ELSE 0 END',
-        })
-        .where('id = :eventId', { eventId })
-        .execute();
+      const remainingRegistrationCount = await this.getEventRegistrationCount(
+        manager,
+        eventId,
+      );
+      await manager.update(
+        Event,
+        { id: eventId },
+        { registrations: remainingRegistrationCount },
+      );
     });
 
     return {

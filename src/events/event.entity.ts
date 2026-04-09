@@ -24,58 +24,58 @@ export enum Chapter {
 @Entity()
 export class Event {
   @PrimaryGeneratedColumn()
-  id: number;
+  id!: number;
 
   @Column()
-  title: string;
+  title!: string;
 
   @Column({ default: '' })
-  description: string;
+  description!: string;
 
   @Column({ nullable: true })
-  date: Date;
+  date!: Date;
 
   @Column({ nullable: true })
-  startTime: Date;
+  startTime!: Date;
 
   @Column({ nullable: true })
-  endTime: Date;
+  endTime!: Date;
 
   @Column({ default: '' })
-  category: string;
+  category!: string;
 
   @Column({ default: 0 })
-  attendeesNeeded: number;
+  attendeesNeeded!: number;
 
   @Column({ default: 0 })
-  registrations: number;
+  registrations!: number;
 
   @Column({ default: 'Beginner' })
-  level: string;
+  level!: string;
 
   @Column({ type: 'enum', enum: Chapter, nullable: true })
-  chapter: Chapter;
+  chapter!: Chapter;
 
   @Column({ default: false })
-  isFeatured: boolean;
+  isFeatured!: boolean;
 
   @Column({ default: '' })
-  speakerFullName: string;
+  speakerFullName!: string;
 
   @Column({ default: '' })
-  aboutSpeaker: string;
+  aboutSpeaker!: string;
 
   @Column({ default: '' })
-  prerequisites: string;
+  prerequisites!: string;
 
   @Column({ default: '' })
-  speakerLinkedin: string;
+  speakerLinkedin!: string;
 
   @CreateDateColumn({ nullable: true })
-  createdAt: Date;
+  createdAt!: Date;
 
   @OneToMany(() => Registration, (registration) => registration.event, {
     cascade: true,
   })
-  userRegistrations: Registration[];
+  userRegistrations!: Registration[];
 }
