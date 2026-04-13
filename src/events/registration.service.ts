@@ -21,6 +21,12 @@ type CheckinTokenPayload = {
 
 const REGISTRATION_BLOCKED_DEMO_EMAILS = new Set(['ieee@example.com']);
 
+type CheckinWindowEvaluation = {
+  isWithinWindow: boolean;
+  status: 'on_time' | 'too_early' | 'too_late' | 'window_unavailable';
+  message: string;
+};
+
 @Injectable()
 export class RegistrationService {
   constructor(
@@ -59,6 +65,71 @@ export class RegistrationService {
     return manager.count(Registration, {
       where: { event: { id: eventId } },
     });
+  }
+
+  private evaluateCheckinWindow(
+    event: Event,
+    now: Date,
+  ): CheckinWindowEvaluation {
+    const startTime = event.startTime ? new Date(event.startTime) : null;
+    const endTime = event.endTime ? new Date(event.endTime) : null;
+
+    if (
+      !startTime ||
+      !endTime ||
+      Number.isNaN(startTime.getTime()) ||
+      Number.isNaN(endTime.getTime())
+    ) {
+      return {
+        isWithinWindow: true,
+        status: 'window_unavailable',
+        message: 'Check-in window is not configured for this event.',
+      };
+    }
+
+    if (now < startTime) {
+      return {
+        isWithinWindow: false,
+        status: 'too_early',
+        message: 'Check-in is not open yet for this event.',
+      };
+    }
+
+    if (now > endTime) {
+      return {
+        isWithinWindow: false,
+        status: 'too_late',
+        message: 'Check-in is closed because the event time has ended.',
+      };
+    }
+
+    return {
+      isWithinWindow: true,
+      status: 'on_time',
+      message: 'Check-in is within the event time window.',
+    };
+  }
+
+  private buildDetailedCheckinWindowMessage(
+    windowEvaluation: CheckinWindowEvaluation,
+    event: Event,
+    now: Date,
+  ): string {
+    const startTime = event.startTime ? new Date(event.startTime) : null;
+    const endTime = event.endTime ? new Date(event.endTime) : null;
+
+    const toIso = (value: Date | null) =>
+      value && !Number.isNaN(value.getTime()) ? value.toISOString() : 'unknown';
+
+    if (windowEvaluation.status === 'too_early') {
+      return `Check-in rejected: too early. Opens at ${toIso(startTime)}. Current server time: ${now.toISOString()}.`;
+    }
+
+    if (windowEvaluation.status === 'too_late') {
+      return `Check-in rejected: too late. Closed at ${toIso(endTime)}. Current server time: ${now.toISOString()}.`;
+    }
+
+    return `${windowEvaluation.message} Event window: ${toIso(startTime)} - ${toIso(endTime)}. Current server time: ${now.toISOString()}.`;
   }
 
   async registerUserToEvent(userId: number, eventId: number) {
@@ -220,12 +291,23 @@ export class RegistrationService {
       : null;
     const decodedPayload =
       decoded && typeof decoded === 'object'
-        ? (decoded as Partial<CheckinTokenPayload>)
+        ? (decoded as Partial<CheckinTokenPayload> & { exp?: number })
         : null;
+
+    const nowEpochSeconds = Math.floor(Date.now() / 1000);
+    const isExpired =
+      typeof decodedPayload?.exp !== 'number' ||
+      decodedPayload.exp <= nowEpochSeconds;
+    const isPayloadMismatch =
+      decodedPayload?.userId !== userId ||
+      decodedPayload?.eventId !== eventId ||
+      decodedPayload?.registrationId !== registration.id;
 
     if (
       !registration.checkinToken ||
-      typeof decodedPayload?.registrationId !== 'number'
+      typeof decodedPayload?.registrationId !== 'number' ||
+      isExpired ||
+      isPayloadMismatch
     ) {
       registration.checkinToken = this.createCheckinToken({
         registrationId: registration.id,
@@ -274,6 +356,12 @@ export class RegistrationService {
         throw new BadRequestException('Token does not match registration');
       }
 
+      const now = new Date();
+      const windowEvaluation = this.evaluateCheckinWindow(
+        registration.event,
+        now,
+      );
+
       if (registration.isCheckedIn) {
         return {
           message: 'Already checked in',
@@ -286,9 +374,23 @@ export class RegistrationService {
           event: {
             id: registration.event.id,
             title: registration.event.title,
+            startTime: registration.event.startTime,
+            endTime: registration.event.endTime,
           },
+          serverTime: now,
+          checkinWindow: windowEvaluation,
           checkedInAt: registration.checkedInAt,
         };
+      }
+
+      if (!windowEvaluation.isWithinWindow) {
+        throw new BadRequestException(
+          this.buildDetailedCheckinWindowMessage(
+            windowEvaluation,
+            registration.event,
+            now,
+          ),
+        );
       }
 
       // Mark as checked in
@@ -307,13 +409,46 @@ export class RegistrationService {
         event: {
           id: registration.event.id,
           title: registration.event.title,
+          startTime: registration.event.startTime,
+          endTime: registration.event.endTime,
         },
+        serverTime: now,
+        checkinWindow: windowEvaluation,
         checkedInAt: registration.checkedInAt,
       };
     } catch (e) {
       if (e instanceof BadRequestException || e instanceof NotFoundException) {
         throw e;
       }
+
+      const jwtError = e as {
+        name?: string;
+        message?: string;
+        expiredAt?: Date;
+      };
+
+      if (jwtError?.name === 'TokenExpiredError') {
+        const expiredAt =
+          jwtError.expiredAt instanceof Date
+            ? jwtError.expiredAt.toISOString()
+            : 'unknown';
+        throw new BadRequestException(
+          `Check-in token expired at ${expiredAt}. Please open the ticket again to refresh the QR code.`,
+        );
+      }
+
+      if (jwtError?.name === 'JsonWebTokenError') {
+        throw new BadRequestException(
+          `Invalid check-in token (${jwtError.message ?? 'signature/payload error'}). Please refresh the attendee QR code.`,
+        );
+      }
+
+      if (jwtError?.name === 'NotBeforeError') {
+        throw new BadRequestException(
+          `Check-in token is not active yet (${jwtError.message ?? 'nbf claim'}).`,
+        );
+      }
+
       throw new BadRequestException('Invalid or expired check-in token');
     }
   }
