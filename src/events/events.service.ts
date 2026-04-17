@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Event } from './event.entity';
@@ -38,6 +42,34 @@ export class EventsService {
     return counts;
   }
 
+  private parseDateOrNull(value: unknown): Date | null {
+    if (value == null) {
+      return null;
+    }
+
+    const parsed = new Date(String(value));
+    if (Number.isNaN(parsed.getTime())) {
+      return null;
+    }
+
+    return parsed;
+  }
+
+  private ensureValidEventWindow(startTime: unknown, endTime: unknown): void {
+    const parsedStart = this.parseDateOrNull(startTime);
+    const parsedEnd = this.parseDateOrNull(endTime);
+
+    if (!parsedStart || !parsedEnd) {
+      throw new BadRequestException(
+        'Event startTime and endTime must be valid ISO-8601 values.',
+      );
+    }
+
+    if (parsedEnd.getTime() <= parsedStart.getTime()) {
+      throw new BadRequestException('Event endTime must be after startTime.');
+    }
+  }
+
   async findAll() {
     const events = await this.repo.find({ order: { date: 'ASC' } });
     const countMap = await this.getRegistrationCountMap(
@@ -64,6 +96,11 @@ export class EventsService {
   }
 
   async create(createEventDto: CreateEventDto) {
+    this.ensureValidEventWindow(
+      createEventDto.startTime,
+      createEventDto.endTime,
+    );
+
     const event = this.repo.create({
       ...createEventDto,
       registrations: 0, // Always start with 0 registrations
@@ -73,6 +110,11 @@ export class EventsService {
 
   async update(id: number, attrs: UpdateEventDto) {
     const event = await this.findOne(id);
+
+    const effectiveStartTime = attrs.startTime ?? event.startTime;
+    const effectiveEndTime = attrs.endTime ?? event.endTime;
+    this.ensureValidEventWindow(effectiveStartTime, effectiveEndTime);
+
     Object.assign(event, attrs);
     return this.repo.save(event);
   }

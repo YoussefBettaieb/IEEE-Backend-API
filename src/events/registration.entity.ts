@@ -37,4 +37,7 @@ export class Registration {
 
   @Column({ type: 'timestamp', nullable: true })
   checkedInAt: Date;
+
+  @Column({ type: 'timestamp', nullable: true })
+  checkedOutAt: Date;
 }

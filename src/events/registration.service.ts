@@ -23,7 +23,12 @@ const REGISTRATION_BLOCKED_DEMO_EMAILS = new Set(['ieee@example.com']);
 
 type CheckinWindowEvaluation = {
   isWithinWindow: boolean;
-  status: 'on_time' | 'too_early' | 'too_late' | 'window_unavailable';
+  status:
+    | 'on_time'
+    | 'too_early'
+    | 'too_late'
+    | 'window_unavailable'
+    | 'invalid_window';
   message: string;
 };
 
@@ -81,9 +86,19 @@ export class RegistrationService {
       Number.isNaN(endTime.getTime())
     ) {
       return {
-        isWithinWindow: true,
+        isWithinWindow: false,
         status: 'window_unavailable',
-        message: 'Check-in window is not configured for this event.',
+        message:
+          'Check-in rejected: this event has no valid start/end time configured.',
+      };
+    }
+
+    if (endTime < startTime) {
+      return {
+        isWithinWindow: false,
+        status: 'invalid_window',
+        message:
+          'Check-in rejected: event time configuration is invalid (endTime is before startTime).',
       };
     }
 
@@ -127,6 +142,14 @@ export class RegistrationService {
 
     if (windowEvaluation.status === 'too_late') {
       return `Check-in rejected: too late. Closed at ${toIso(endTime)}. Current server time: ${now.toISOString()}.`;
+    }
+
+    if (windowEvaluation.status === 'window_unavailable') {
+      return `Check-in rejected: event check-in window is not configured. Event window: ${toIso(startTime)} - ${toIso(endTime)}. Current server time: ${now.toISOString()}.`;
+    }
+
+    if (windowEvaluation.status === 'invalid_window') {
+      return `Check-in rejected: event time window is invalid (end before start). Event window: ${toIso(startTime)} - ${toIso(endTime)}. Current server time: ${now.toISOString()}.`;
     }
 
     return `${windowEvaluation.message} Event window: ${toIso(startTime)} - ${toIso(endTime)}. Current server time: ${now.toISOString()}.`;
@@ -259,6 +282,7 @@ export class RegistrationService {
       registeredAt: registration.registeredAt,
       isCheckedIn: registration.isCheckedIn,
       checkedInAt: registration.checkedInAt,
+      checkedOutAt: registration.checkedOutAt,
     }));
   }
 
@@ -275,6 +299,8 @@ export class RegistrationService {
       registeredAt: registration.registeredAt,
       checkinToken: registration.checkinToken,
       isCheckedIn: registration.isCheckedIn,
+      checkedInAt: registration.checkedInAt,
+      checkedOutAt: registration.checkedOutAt,
     }));
   }
 
@@ -320,6 +346,8 @@ export class RegistrationService {
     return {
       checkinToken: registration.checkinToken,
       isCheckedIn: registration.isCheckedIn,
+      checkedInAt: registration.checkedInAt,
+      checkedOutAt: registration.checkedOutAt,
     };
   }
 
@@ -362,6 +390,28 @@ export class RegistrationService {
         now,
       );
 
+      if (registration.checkedOutAt) {
+        return {
+          message: 'Already checked out',
+          alreadyCheckedOut: true,
+          user: {
+            id: registration.user.id,
+            fullName: registration.user.fullName,
+            email: registration.user.email,
+          },
+          event: {
+            id: registration.event.id,
+            title: registration.event.title,
+            startTime: registration.event.startTime,
+            endTime: registration.event.endTime,
+          },
+          serverTime: now,
+          checkinWindow: windowEvaluation,
+          checkedInAt: registration.checkedInAt,
+          checkedOutAt: registration.checkedOutAt,
+        };
+      }
+
       if (registration.isCheckedIn) {
         return {
           message: 'Already checked in',
@@ -380,6 +430,7 @@ export class RegistrationService {
           serverTime: now,
           checkinWindow: windowEvaluation,
           checkedInAt: registration.checkedInAt,
+          checkedOutAt: registration.checkedOutAt,
         };
       }
 
@@ -395,7 +446,7 @@ export class RegistrationService {
 
       // Mark as checked in
       registration.isCheckedIn = true;
-      registration.checkedInAt = new Date();
+      registration.checkedInAt = registration.checkedInAt ?? new Date();
       await this.registrationRepo.save(registration);
 
       return {
@@ -415,6 +466,7 @@ export class RegistrationService {
         serverTime: now,
         checkinWindow: windowEvaluation,
         checkedInAt: registration.checkedInAt,
+        checkedOutAt: registration.checkedOutAt,
       };
     } catch (e) {
       if (e instanceof BadRequestException || e instanceof NotFoundException) {
@@ -450,6 +502,141 @@ export class RegistrationService {
       }
 
       throw new BadRequestException('Invalid or expired check-in token');
+    }
+  }
+
+  async verifyCheckout(token: string) {
+    try {
+      const payload = this.jwtService.verify<CheckinTokenPayload>(token);
+
+      if (payload.type !== 'event-checkin') {
+        throw new BadRequestException('Invalid token type');
+      }
+
+      const registration =
+        typeof payload.registrationId === 'number'
+          ? await this.registrationRepo.findOne({
+              where: { id: payload.registrationId },
+              relations: ['user', 'event'],
+            })
+          : await this.registrationRepo.findOne({
+              where: {
+                user: { id: payload.userId },
+                event: { id: payload.eventId },
+              },
+              relations: ['user', 'event'],
+            });
+
+      if (!registration) {
+        throw new NotFoundException('Registration not found');
+      }
+
+      if (
+        registration.user.id !== payload.userId ||
+        registration.event.id !== payload.eventId
+      ) {
+        throw new BadRequestException('Token does not match registration');
+      }
+
+      const now = new Date();
+      const windowEvaluation = this.evaluateCheckinWindow(
+        registration.event,
+        now,
+      );
+
+      if (!registration.isCheckedIn) {
+        if (registration.checkedOutAt) {
+          return {
+            message: 'Already checked out',
+            alreadyCheckedOut: true,
+            user: {
+              id: registration.user.id,
+              fullName: registration.user.fullName,
+              email: registration.user.email,
+            },
+            event: {
+              id: registration.event.id,
+              title: registration.event.title,
+              startTime: registration.event.startTime,
+              endTime: registration.event.endTime,
+            },
+            serverTime: now,
+            checkinWindow: windowEvaluation,
+            checkedInAt: registration.checkedInAt,
+            checkedOutAt: registration.checkedOutAt,
+          };
+        }
+
+        throw new BadRequestException('Cannot check out before checking in');
+      }
+
+      if (!windowEvaluation.isWithinWindow) {
+        throw new BadRequestException(
+          this.buildDetailedCheckinWindowMessage(
+            windowEvaluation,
+            registration.event,
+            now,
+          ),
+        );
+      }
+
+      registration.isCheckedIn = false;
+      registration.checkedOutAt = new Date();
+      await this.registrationRepo.save(registration);
+
+      return {
+        message: 'Check-out successful',
+        alreadyCheckedOut: false,
+        user: {
+          id: registration.user.id,
+          fullName: registration.user.fullName,
+          email: registration.user.email,
+        },
+        event: {
+          id: registration.event.id,
+          title: registration.event.title,
+          startTime: registration.event.startTime,
+          endTime: registration.event.endTime,
+        },
+        serverTime: now,
+        checkinWindow: windowEvaluation,
+        checkedInAt: registration.checkedInAt,
+        checkedOutAt: registration.checkedOutAt,
+      };
+    } catch (e) {
+      if (e instanceof BadRequestException || e instanceof NotFoundException) {
+        throw e;
+      }
+
+      const jwtError = e as {
+        name?: string;
+        message?: string;
+        expiredAt?: Date;
+      };
+
+      if (jwtError?.name === 'TokenExpiredError') {
+        const expiredAt =
+          jwtError.expiredAt instanceof Date
+            ? jwtError.expiredAt.toISOString()
+            : 'unknown';
+        throw new BadRequestException(
+          `Check-out token expired at ${expiredAt}. Please open the ticket again to refresh the QR code.`,
+        );
+      }
+
+      if (jwtError?.name === 'JsonWebTokenError') {
+        throw new BadRequestException(
+          `Invalid check-out token (${jwtError.message ?? 'signature/payload error'}). Please refresh the attendee QR code.`,
+        );
+      }
+
+      if (jwtError?.name === 'NotBeforeError') {
+        throw new BadRequestException(
+          `Check-out token is not active yet (${jwtError.message ?? 'nbf claim'}).`,
+        );
+      }
+
+      throw new BadRequestException('Invalid or expired check-out token');
     }
   }
 

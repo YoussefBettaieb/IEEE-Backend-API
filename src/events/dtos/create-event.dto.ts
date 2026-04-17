@@ -8,6 +8,7 @@ import {
 } from 'class-validator';
 import { Chapter } from '../event.entity';
 import { ApiProperty } from '@nestjs/swagger';
+import { IsAfter } from './validators/is-after.constraint';
 
 export class CreateEventDto {
   @ApiProperty({
@@ -43,6 +44,9 @@ export class CreateEventDto {
     description: 'End time of the event',
   })
   @IsISO8601()
+  @IsAfter('startTime', {
+    message: 'endTime must be after startTime',
+  })
   endTime!: string;
 
   @ApiProperty({

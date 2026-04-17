@@ -124,4 +124,11 @@ export class EventsController {
   async verifyCheckin(@Body() body: { token: string }) {
     return this.registrationService.verifyCheckin(body.token);
   }
+
+  @UseGuards(AdminGuard)
+  @ApiOperation({ summary: 'Verify QR code and check out user (Admin only)' })
+  @Post('check-out')
+  async verifyCheckout(@Body() body: { token: string }) {
+    return this.registrationService.verifyCheckout(body.token);
+  }
 }
