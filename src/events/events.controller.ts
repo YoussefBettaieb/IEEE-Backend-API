@@ -29,8 +29,14 @@ export class EventsController {
 
   @ApiOperation({ summary: 'Get all events' }) // swagger doc
   @Get()
-  async getAllEvents() {
-    return this.eventsService.findAll();
+  async getAllEvents(@Request() req: any) {
+    return this.eventsService.findAll(req.user.id);
+  }
+
+  @ApiOperation({ summary: 'Get current user favorite events' })
+  @Get('me/favorites')
+  async getUserFavorites(@Request() req: any) {
+    return this.eventsService.getUserFavorites(req.user.id);
   }
 
   @ApiOperation({ summary: 'Get current user registrations' })
@@ -57,8 +63,20 @@ export class EventsController {
 
   @ApiOperation({ summary: 'Get event by ID' }) // swagger doc
   @Get(':id')
-  async getEventById(@Param('id') id: number) {
-    return this.eventsService.findOne(id);
+  async getEventById(@Request() req: any, @Param('id') id: number) {
+    return this.eventsService.findOne(id, req.user.id);
+  }
+
+  @ApiOperation({ summary: 'Add event to current user favorites' })
+  @Post(':id/favorite')
+  async addFavorite(@Request() req: any, @Param('id') id: number) {
+    return this.eventsService.addFavorite(req.user.id, id);
+  }
+
+  @ApiOperation({ summary: 'Remove event from current user favorites' })
+  @Delete(':id/favorite')
+  async removeFavorite(@Request() req: any, @Param('id') id: number) {
+    return this.eventsService.removeFavorite(req.user.id, id);
   }
 
   @UseGuards(AdminGuard)

@@ -6,6 +6,7 @@ import {
   CreateDateColumn,
 } from 'typeorm';
 import { Registration } from './registration.entity';
+import { Favorite } from './favorite.entity';
 
 // IMPORTANT: Never modify this enum while synchronize: true is enabled.
 // Adding/removing values causes TypeORM to drop & recreate the column,
@@ -78,4 +79,7 @@ export class Event {
     cascade: true,
   })
   userRegistrations!: Registration[];
+
+  @OneToMany(() => Favorite, (favorite) => favorite.event)
+  favorites!: Favorite[];
 }

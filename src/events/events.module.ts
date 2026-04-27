@@ -4,6 +4,7 @@ import { EventsService } from './events.service';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Event } from './event.entity';
 import { Registration } from './registration.entity';
+import { Favorite } from './favorite.entity';
 import { RegistrationService } from './registration.service';
 import { User } from 'src/users/user.entity';
 import { JwtModule } from '@nestjs/jwt';
@@ -12,7 +13,7 @@ import type { StringValue } from 'ms';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Event, Registration, User]),
+    TypeOrmModule.forFeature([Event, Registration, User, Favorite]),
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => {

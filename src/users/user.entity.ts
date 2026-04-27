@@ -8,6 +8,7 @@ import {
   Index,
 } from 'typeorm';
 import { Registration } from '../events/registration.entity';
+import { Favorite } from '../events/favorite.entity';
 
 @Entity()
 export class User {
@@ -35,4 +36,7 @@ export class User {
     cascade: true,
   })
   registrations: Registration[];
+
+  @OneToMany(() => Favorite, (favorite) => favorite.user)
+  favorites: Favorite[];
 }
